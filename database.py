@@ -97,6 +97,42 @@ class Database:
             return False
         return True
 
+    def drop_and_recreate_db(self) -> None:
+        with self._connect() as conn:
+            conn.executescript(
+                """
+                DROP TABLE IF EXISTS user_progress;
+                DROP TABLE IF EXISTS users;
+                DROP TABLE IF EXISTS questions;
+                DROP TABLE IF EXISTS categories;
+                """
+            )
+        self._init_db()
+
+    def get_question_by_id(self, question_id: int):
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT q.id, q.question, q.answer, c.name AS category
+                FROM questions q
+                LEFT JOIN categories c ON c.id = q.category_id
+                WHERE q.id = ?
+                """,
+                (question_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def delete_question_by_id(self, question_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM questions WHERE id = ?", (question_id,))
+
+    def delete_progress_for_question(self, question_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM user_progress WHERE question_id = ?",
+                (question_id,),
+            )
+
     def export_rows(self) -> list:
         with self._connect() as conn:
             rows = conn.execute(

@@ -7,11 +7,13 @@ import time
 from aiogram import F, Router
 from aiogram.filters import BaseFilter, Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, FSInputFile, Message
+from aiogram.types import CallbackQuery, BufferedInputFile, FSInputFile, Message
 
 import config
+import keyboards
+from handlers.questions import clear_last_question
 from services.import_service import ImportService
-from states import AddQuestion, ImportQuestions
+from states import AddQuestion, DeleteQuestion, ImportQuestions, ResetDb
 from utils.constants import VERSION
 
 logger = logging.getLogger(__name__)
@@ -22,8 +24,8 @@ MAX_IMPORT_SIZE = 10 * 1024 * 1024
 
 
 class IsAdmin(BaseFilter):
-    async def __call__(self, message: Message) -> bool:
-        return message.from_user.id in config.ADMIN_IDS
+    async def __call__(self, event) -> bool:
+        return event.from_user.id in config.ADMIN_IDS
 
 
 def _memory_mb() -> float:
@@ -184,3 +186,111 @@ async def cmd_logs(message: Message) -> None:
         )
         return
     await message.answer(f"Последние строки bot.log:\n\n{content}")
+
+
+@router.message(Command("delete"), IsAdmin())
+async def cmd_delete(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(DeleteQuestion.waiting_id)
+    await message.answer("Введи ID вопроса для удаления.")
+
+
+@router.message(DeleteQuestion.waiting_id, IsAdmin())
+async def delete_ask_id(message: Message, state: FSMContext, db) -> None:
+    if not message.text or not message.text.strip().isdigit():
+        await message.answer("Нужно отправить число — ID вопроса.")
+        return
+    question_id = int(message.text.strip())
+    question = db.get_question_by_id(question_id)
+    if question is None:
+        await message.answer(f"Вопрос с ID {question_id} не найден.")
+        await state.clear()
+        return
+    await state.update_data(question_id=question_id)
+    await state.set_state(DeleteQuestion.confirm)
+    text = f"#{question['id']}\n{question['question']}"
+    if question["category"]:
+        text += f"\n\nКатегория: {question['category']}"
+    await message.answer(
+        f"Точно удалить этот вопрос?\n\n{text}",
+        reply_markup=keyboards.confirm_delete_button(),
+    )
+
+
+@router.callback_query(F.data == "confirm_delete", IsAdmin())
+async def confirm_delete(
+    callback: CallbackQuery, state: FSMContext, db
+) -> None:
+    await callback.answer()
+    data = await state.get_data()
+    question_id = data.get("question_id")
+    if question_id is None:
+        await state.clear()
+        await callback.message.answer(
+            "Данные удаления не найдены. Используй /delete заново."
+        )
+        return
+    db.delete_progress_for_question(question_id)
+    db.delete_question_by_id(question_id)
+    clear_last_question(question_id)
+    await state.clear()
+    logger.info(
+        "Вопрос #%s удалён администратором %s",
+        question_id,
+        callback.from_user.id,
+    )
+    await callback.message.answer(
+        f"Вопрос #{question_id} удалён вместе с прогрессом пользователей."
+    )
+
+
+@router.callback_query(F.data == "cancel_delete", IsAdmin())
+async def cancel_delete(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.clear()
+    await callback.message.answer("Удаление отменено.")
+
+
+@router.message(Command("resetdb"), IsAdmin())
+async def cmd_resetdb(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(ResetDb.confirm)
+    await state.update_data(confirm_steps=0)
+    await message.answer(
+        "⚠️ Внимание! Это удалит ВСЕ вопросы, категории и прогресс "
+        "пользователей без возможности восстановления.\n\n"
+        "Продолжить?",
+        reply_markup=keyboards.confirm_reset_db_button(),
+    )
+
+
+@router.callback_query(F.data == "confirm_reset_db", IsAdmin())
+async def confirm_reset_db(
+    callback: CallbackQuery, state: FSMContext, db
+) -> None:
+    await callback.answer()
+    data = await state.get_data()
+    steps = data.get("confirm_steps", 0)
+    if steps == 0:
+        await state.update_data(confirm_steps=1)
+        await callback.message.answer(
+            "Последнее подтверждение: сброс необратим, все данные будут "
+            "удалены навсегда.\n\n"
+            "Нажми «Подтвердить» ещё раз.",
+            reply_markup=keyboards.confirm_reset_db_button(),
+        )
+        return
+    db.drop_and_recreate_db()
+    await state.clear()
+    logger.warning(
+        "База данных полностью сброшена администратором %s",
+        callback.from_user.id,
+    )
+    await callback.message.answer("База данных сброшена. Все данные удалены.")
+
+
+@router.callback_query(F.data == "cancel_reset_db", IsAdmin())
+async def cancel_reset_db(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.clear()
+    await callback.message.answer("Сброс отменён.")

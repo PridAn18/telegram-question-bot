@@ -15,10 +15,16 @@ last_question: dict[int, dict] = {}
 
 
 def _question_text(question: dict) -> str:
-    text = f"Вопрос:\n{question['question']}"
+    text = f"#{question['id']}\nВопрос:\n{question['question']}"
     if question["category"]:
         text += f"\n\nКатегория: {question['category']}"
     return text
+
+
+def clear_last_question(question_id: int) -> None:
+    for user_id, question in list(last_question.items()):
+        if question["id"] == question_id:
+            last_question.pop(user_id, None)
 
 
 @router.callback_query(F.data == "start_quiz")

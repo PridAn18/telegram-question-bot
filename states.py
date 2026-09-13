@@ -9,3 +9,12 @@ class AddQuestion(StatesGroup):
 
 class ImportQuestions(StatesGroup):
     waiting_file = State()
+
+
+class DeleteQuestion(StatesGroup):
+    waiting_id = State()
+    confirm = State()
+
+
+class ResetDb(StatesGroup):
+    confirm = State()
