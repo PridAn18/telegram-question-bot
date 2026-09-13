@@ -1,0 +1,20 @@
+[Unit]
+Description=Telegram Question Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=telegram-bot
+Group=telegram-bot
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__INSTALL_DIR__/venv/bin/python bot.py
+Restart=always
+RestartSec=5
+EnvironmentFile=__INSTALL_DIR__/.env
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
