@@ -3,6 +3,8 @@ import logging
 import time
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 import config
@@ -22,7 +24,10 @@ async def main() -> None:
 
     db = Database(config.DATABASE_PATH)
 
-    bot = Bot(token=config.BOT_TOKEN)
+    bot = Bot(
+        token=config.BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
     dp = Dispatcher(storage=MemoryStorage())
 
     dp["db"] = db
