@@ -24,18 +24,22 @@ def _question_text(question: dict) -> str:
 
 
 def _format_answer(answer: str) -> str:
-    answer = answer.strip()
+    text = escape(answer.strip())
 
-    fence_match = re.fullmatch(r"```([a-zA-Z0-9_+-]*)\n([\s\S]*?)\n```", answer)
-    if fence_match:
-        lang = fence_match.group(1).strip()
-        body = fence_match.group(2)
-        body = escape(body)
+    def repl(match: re.Match) -> str:
+        lang = match.group(1) or ""
+        body = escape(match.group(2))
         if lang:
             return f'<pre><code class="language-{escape(lang)}">{body}</code></pre>'
         return f"<pre>{body}</pre>"
 
-    return escape(answer).replace("\n", "\n")
+    text = re.sub(
+        r"```([a-zA-Z0-9_+-]*)\n([\s\S]*?)\n```",
+        repl,
+        text,
+    )
+
+    return text.replace("\n", "\n")
 
 
 def clear_last_question(question_id: int) -> None:
