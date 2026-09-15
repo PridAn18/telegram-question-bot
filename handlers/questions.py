@@ -24,22 +24,34 @@ def _question_text(question: dict) -> str:
 
 
 def _format_answer(answer: str) -> str:
-    text = escape(answer.strip())
+    parts = []
+    pos = 0
 
-    def repl(match: re.Match) -> str:
-        lang = match.group(1) or ""
-        body = escape(match.group(2))
+    pattern = re.compile(r"```([a-zA-Z0-9_+-]*)\n([\s\S]*?)\n```")
+
+    for match in pattern.finditer(answer):
+        # обычный текст до блока кода
+        before = answer[pos:match.start()]
+        if before:
+            parts.append(escape(before, quote=False))
+
+        lang = match.group(1).strip()
+        code = match.group(2)
+
+        code = escape(code, quote=False)
         if lang:
-            return f'<pre><code class="language-{escape(lang)}">{body}</code></pre>'
-        return f"<pre>{body}</pre>"
+            parts.append(f'<pre><code class="language-{escape(lang, quote=False)}">{code}</code></pre>')
+        else:
+            parts.append(f"<pre>{code}</pre>")
 
-    text = re.sub(
-        r"```([a-zA-Z0-9_+-]*)\n([\s\S]*?)\n```",
-        repl,
-        text,
-    )
+        pos = match.end()
 
-    return text.replace("\n", "\n")
+    # хвост обычного текста
+    tail = answer[pos:]
+    if tail:
+        parts.append(escape(tail, quote=False))
+
+    return "".join(parts)
 
 
 def clear_last_question(question_id: int) -> None:
